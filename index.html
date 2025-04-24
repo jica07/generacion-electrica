@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Generación de Energia por tecnología</title>
+  <title>Generación por tecnología</title>
   <!-- Flatpickr para calendario -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <style>
@@ -228,7 +228,8 @@
             animation: { duration: 1000 },
             plugins: {
               title: { display: true, text: tech.attributes.title, color: '#fff', font: { size: 18 } },
-              tooltip: { callbacks: { label: ctx => `Valor: ${ctx.dataset.data[ctx.dataIndex].toFixed(1)} MWh — Porcentaje: ${percs[ctx.dataIndex]}` } }
+              tooltip: { callbacks: { label: ctx => `Valor: ${ctx.dataset.data[ctx.dataIndex].toFixed(1)} MWh — Porcentaje: ${percs[ctx.dataIndex]}` } },
+              datalabels: { display: false }
             },
             scales: {
               x: { title: { display: true, text: 'Fecha', color: '#fff' }, ticks: { color: '#fff', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.1)' } },
