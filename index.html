@@ -16,10 +16,22 @@
       text-align: center;
       margin-bottom: 10px;
     }
-    #calendar {
+    #controls {
       display: flex;
       justify-content: center;
+      align-items: center;
+      gap: 15px;
       margin-bottom: 20px;
+    }
+    #controls label {
+      font-size: 0.9em;
+    }
+    #controls input {
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 4px;
+      color: #fff;
+      padding: 5px;
     }
     #leaderboard {
       max-width: 600px;
@@ -63,32 +75,46 @@
 </head>
 <body>
   <h1>Generación por tecnología</h1>
-  <div id="calendar">
+
+  <div id="controls">
     <input type="text" id="datePicker" placeholder="Selecciona una fecha">
+    <label for="numDays">Nº de días:</label>
+    <input type="number" id="numDays" min="1" max="365" value="30">
   </div>
 
-  <!-- Podio gamificado -->
+  <!-- Podio y total -->
   <div id="leaderboard">
-    <h2>🏆 Top 4 Tecnologías</h2>
+    <h2 id="leaderboard-title">🏆 Top 4 Tecnologías</h2>
     <ol id="podium"></ol>
     <div id="total-gen"></div>
   </div>
 
+  <!-- Pie chart top6 -->
+  <div id="pie-container" class="chart-container"></div>
+
+  <!-- Gráficos individuales -->
   <div id="charts"></div>
 
   <!-- Librerías -->
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
   <script>
+    // Registrar plugin para etiquetas en el pastel
+    Chart.register(ChartDataLabels);
+
     const PALETA = ["#08306b","#08519c","#2171b5","#4292c6","#6baed6","#9ecae1","#c6dbef"];
+    const BRIGHT = ["#e6194b","#3cb44b","#ffe119","#4363d8","#f58231","#911eb4"];
+
     function getColors(n) {
       return PALETA.slice(0, n);
     }
 
     function fetchData(fecha) {
+      const numDays = parseInt(document.getElementById('numDays').value, 10) || 30;
       const endDate  = `${fecha}T23:59`;
       const d        = new Date(fecha);
-      d.setDate(d.getDate() - 29);
+      d.setDate(d.getDate() - (numDays - 1));
       const startStr = d.toISOString().split('T')[0] + 'T00:00';
       const url = `https://apidatos.ree.es/es/datos/generacion/estructura-generacion?start_date=${startStr}&end_date=${endDate}&time_trunc=day`;
 
@@ -96,23 +122,21 @@
         .then(res => res.json())
         .then(json => {
           renderLeaderboard(json.included, fecha);
+          renderPieChart(json.included);
           renderCharts(json.included);
         })
         .catch(err => console.error(err));
     }
 
     function renderLeaderboard(included, fecha) {
-      // Filtrar tecnologías, excluir "Generación total"
+      document.getElementById('leaderboard-title').textContent =
+        `🏆 Top 4 Tecnologías (${fecha})`;
+
       const techs = included.filter(t => t.attributes.title !== "Generación total");
-      // Para cada tecnología, obtener valor del día seleccionado
       const vals = techs.map(t => {
         const entry = t.attributes.values.find(v => v.datetime.startsWith(fecha));
-        return {
-          title: t.attributes.title,
-          value: entry ? entry.value : 0
-        };
+        return { title: t.attributes.title, value: entry ? entry.value : 0 };
       });
-      // Ordenar por valor descendente y tomar top 4
       vals.sort((a,b) => b.value - a.value);
       const top4 = vals.slice(0, 4);
 
@@ -121,16 +145,64 @@
       const medals = ['🥇','🥈','🥉','4️⃣'];
       top4.forEach((t, i) => {
         const li = document.createElement('li');
-        li.innerHTML = `${medals[i]} <span>${t.title} — ${t.value.toLocaleString()} MWh</span>`;
+        li.innerHTML = `${medals[i]} <span>${t.title} — ${t.value.toFixed(1)} MWh</span>`;
         podium.appendChild(li);
       });
 
-      // Mostrar Generación total del día
       const totalTech = included.find(t => t.attributes.title === "Generación total");
       const totalEntry = totalTech.attributes.values.find(v => v.datetime.startsWith(fecha));
       const totalValue = totalEntry ? totalEntry.value : 0;
       document.getElementById('total-gen').textContent =
-        `Generación total (${fecha}): ${totalValue.toLocaleString()} MWh`;
+        `Generación total (${fecha}): ${totalValue.toFixed(1)} MWh`;
+    }
+
+    function renderPieChart(included) {
+      const techs = included.filter(t => t.attributes.title !== "Generación total");
+      const sums = techs.map(t => ({
+        title: t.attributes.title,
+        total: t.attributes.values.reduce((a,v) => a + v.value, 0)
+      }));
+      sums.sort((a,b) => b.total - a.total);
+      const top6 = sums.slice(0,6);
+
+      const container = document.getElementById('pie-container');
+      container.innerHTML = '<canvas id="pieChart"></canvas>';
+      const ctx = document.getElementById('pieChart').getContext('2d');
+
+      new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: top6.map(t => t.title),
+          datasets: [{
+            data: top6.map(t => t.total),
+            backgroundColor: BRIGHT.slice(0, top6.length)
+          }]
+        },
+        options: {
+          plugins: {
+            legend: { display: false },
+            title: {
+              display: true,
+              text: 'Top 6 Tecnologías (suma período)',
+              color: '#fff',
+              font: { size: 18 }
+            },
+            datalabels: {
+              color: '#fff',
+              font: { weight: 'bold' },
+              formatter: (value, ctx) => ctx.chart.data.labels[ctx.dataIndex]
+            },
+            tooltip: {
+              callbacks: {
+                label: ctx => {
+                  const val = ctx.dataset.data[ctx.dataIndex];
+                  return `${ctx.label}: ${val.toFixed(1)} MWh`;
+                }
+              }
+            }
+          }
+        }
+      });
     }
 
     function renderCharts(included) {
@@ -138,78 +210,39 @@
       cont.innerHTML = '';
 
       included.forEach((tech, idx) => {
-        const valsObj = tech.attributes.values
-                          .sort((a,b) => new Date(a.datetime) - new Date(b.datetime));
+        const valsObj = tech.attributes.values.sort((a,b) => new Date(a.datetime) - new Date(b.datetime));
         const labels  = valsObj.map(v => v.datetime.split('T')[0]);
         const data    = valsObj.map(v => v.value);
         const percs   = valsObj.map(v => (v.percentage*100).toFixed(2) + '%');
 
         const div = document.createElement('div');
         div.classList.add('chart-container');
-        const canvas = document.createElement('canvas');
-        canvas.id = `chart-${idx}`;
-        div.appendChild(canvas);
+        div.innerHTML = `<canvas id="chart-${idx}"></canvas>`;
         cont.appendChild(div);
 
-        new Chart(canvas.getContext('2d'), {
+        const ctx = document.getElementById(`chart-${idx}`).getContext('2d');
+        new Chart(ctx, {
           type: 'bar',
-          data: {
-            labels,
-            datasets: [{
-              label: tech.attributes.title,
-              data,
-              backgroundColor: getColors(labels.length),
-              hoverBackgroundColor: getColors(labels.length)
-            }]
-          },
+          data: { labels, datasets: [{ label: tech.attributes.title, data, backgroundColor: getColors(labels.length), hoverBackgroundColor: getColors(labels.length) }] },
           options: {
             animation: { duration: 1000 },
             plugins: {
-              title: {
-                display: true,
-                text: tech.attributes.title,
-                color: '#fff',
-                font: { size: 18 }
-              },
-              tooltip: {
-                callbacks: {
-                  label: ctx => `Porcentaje: ${percs[ctx.dataIndex]}`
-                }
-              }
+              title: { display: true, text: tech.attributes.title, color: '#fff', font: { size: 18 } },
+              tooltip: { callbacks: { label: ctx => `Valor: ${ctx.dataset.data[ctx.dataIndex].toFixed(1)} MWh — Porcentaje: ${percs[ctx.dataIndex]}` } }
             },
             scales: {
-              x: {
-                title: { display: true, text: 'Fecha', color: '#fff' },
-                ticks: {
-                  color: '#fff',
-                  maxRotation: 45,
-                  minRotation: 45
-                },
-                grid: { color: 'rgba(255,255,255,0.1)' }
-              },
-              y: {
-                title: { display: true, text: 'Valor (MWh)', color: '#fff' },
-                ticks: { color: '#fff' },
-                grid: { color: 'rgba(255,255,255,0.1)' }
-              }
+              x: { title: { display: true, text: 'Fecha', color: '#fff' }, ticks: { color: '#fff', maxRotation: 45, minRotation: 45 }, grid: { color: 'rgba(255,255,255,0.1)' } },
+              y: { title: { display: true, text: 'Valor (MWh)', color: '#fff' }, ticks: { color: '#fff' }, grid: { color: 'rgba(255,255,255,0.1)' } }
             }
           }
         });
       });
     }
 
-    // Inicializar Flatpickr con fecha por defecto = hoy - 2 días
     const defaultDate = new Date(Date.now() - 2 * 24*60*60*1000);
-    flatpickr("#datePicker", {
-      dateFormat: "Y-m-d",
-      defaultDate,
-      maxDate: new Date(),
-      onChange: (sel, dateStr) => { if (dateStr) fetchData(dateStr); }
-    });
-
-    // Carga inicial
-    const initDate = defaultDate.toISOString().split('T')[0];
-    fetchData(initDate);
+    flatpickr("#datePicker", { dateFormat: "Y-m-d", defaultDate, maxDate: new Date(), onChange: (s, d) => { if (d) fetchData(d); } });
+    document.getElementById('numDays').addEventListener('change', () => { const d = document.getElementById('datePicker').value; if (d) fetchData(d); });
+    fetchData(defaultDate.toISOString().split('T')[0]);
   </script>
 </body>
 </html>
