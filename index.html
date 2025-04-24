@@ -1,0 +1,217 @@
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Generación por tecnología</title>
+  <!-- Flatpickr para calendario -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <style>
+    body {
+      background-color: #121212;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    #calendar {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    #leaderboard {
+      max-width: 600px;
+      margin: 0 auto 30px;
+      background: #1f1f1f;
+      border-radius: 8px;
+      padding: 15px;
+    }
+    #leaderboard h2 {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    #leaderboard ol {
+      list-style: none;
+      padding: 0;
+    }
+    #leaderboard li {
+      font-size: 1.1em;
+      margin: 8px 0;
+      display: flex;
+      align-items: center;
+    }
+    #leaderboard li span {
+      margin-left: 10px;
+    }
+    #total-gen {
+      text-align: center;
+      margin-top: 15px;
+      font-size: 1.1em;
+    }
+    .chart-container {
+      width: 600px;
+      margin: 40px auto;
+    }
+    canvas {
+      background-color: #1e1e1e;
+      border-radius: 8px;
+      padding: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Generación por tecnología</h1>
+  <div id="calendar">
+    <input type="text" id="datePicker" placeholder="Selecciona una fecha">
+  </div>
+
+  <!-- Podio gamificado -->
+  <div id="leaderboard">
+    <h2>🏆 Top 4 Tecnologías</h2>
+    <ol id="podium"></ol>
+    <div id="total-gen"></div>
+  </div>
+
+  <div id="charts"></div>
+
+  <!-- Librerías -->
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const PALETA = ["#08306b","#08519c","#2171b5","#4292c6","#6baed6","#9ecae1","#c6dbef"];
+    function getColors(n) {
+      return PALETA.slice(0, n);
+    }
+
+    function fetchData(fecha) {
+      const endDate  = `${fecha}T23:59`;
+      const d        = new Date(fecha);
+      d.setDate(d.getDate() - 29);
+      const startStr = d.toISOString().split('T')[0] + 'T00:00';
+      const url = `https://apidatos.ree.es/es/datos/generacion/estructura-generacion?start_date=${startStr}&end_date=${endDate}&time_trunc=day`;
+
+      fetch(url)
+        .then(res => res.json())
+        .then(json => {
+          renderLeaderboard(json.included, fecha);
+          renderCharts(json.included);
+        })
+        .catch(err => console.error(err));
+    }
+
+    function renderLeaderboard(included, fecha) {
+      // Filtrar tecnologías, excluir "Generación total"
+      const techs = included.filter(t => t.attributes.title !== "Generación total");
+      // Para cada tecnología, obtener valor del día seleccionado
+      const vals = techs.map(t => {
+        const entry = t.attributes.values.find(v => v.datetime.startsWith(fecha));
+        return {
+          title: t.attributes.title,
+          value: entry ? entry.value : 0
+        };
+      });
+      // Ordenar por valor descendente y tomar top 4
+      vals.sort((a,b) => b.value - a.value);
+      const top4 = vals.slice(0, 4);
+
+      const podium = document.getElementById('podium');
+      podium.innerHTML = '';
+      const medals = ['🥇','🥈','🥉','4️⃣'];
+      top4.forEach((t, i) => {
+        const li = document.createElement('li');
+        li.innerHTML = `${medals[i]} <span>${t.title} — ${t.value.toLocaleString()} MWh</span>`;
+        podium.appendChild(li);
+      });
+
+      // Mostrar Generación total del día
+      const totalTech = included.find(t => t.attributes.title === "Generación total");
+      const totalEntry = totalTech.attributes.values.find(v => v.datetime.startsWith(fecha));
+      const totalValue = totalEntry ? totalEntry.value : 0;
+      document.getElementById('total-gen').textContent =
+        `Generación total (${fecha}): ${totalValue.toLocaleString()} MWh`;
+    }
+
+    function renderCharts(included) {
+      const cont = document.getElementById('charts');
+      cont.innerHTML = '';
+
+      included.forEach((tech, idx) => {
+        const valsObj = tech.attributes.values
+                          .sort((a,b) => new Date(a.datetime) - new Date(b.datetime));
+        const labels  = valsObj.map(v => v.datetime.split('T')[0]);
+        const data    = valsObj.map(v => v.value);
+        const percs   = valsObj.map(v => (v.percentage*100).toFixed(2) + '%');
+
+        const div = document.createElement('div');
+        div.classList.add('chart-container');
+        const canvas = document.createElement('canvas');
+        canvas.id = `chart-${idx}`;
+        div.appendChild(canvas);
+        cont.appendChild(div);
+
+        new Chart(canvas.getContext('2d'), {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: tech.attributes.title,
+              data,
+              backgroundColor: getColors(labels.length),
+              hoverBackgroundColor: getColors(labels.length)
+            }]
+          },
+          options: {
+            animation: { duration: 1000 },
+            plugins: {
+              title: {
+                display: true,
+                text: tech.attributes.title,
+                color: '#fff',
+                font: { size: 18 }
+              },
+              tooltip: {
+                callbacks: {
+                  label: ctx => `Porcentaje: ${percs[ctx.dataIndex]}`
+                }
+              }
+            },
+            scales: {
+              x: {
+                title: { display: true, text: 'Fecha', color: '#fff' },
+                ticks: {
+                  color: '#fff',
+                  maxRotation: 45,
+                  minRotation: 45
+                },
+                grid: { color: 'rgba(255,255,255,0.1)' }
+              },
+              y: {
+                title: { display: true, text: 'Valor (MWh)', color: '#fff' },
+                ticks: { color: '#fff' },
+                grid: { color: 'rgba(255,255,255,0.1)' }
+              }
+            }
+          }
+        });
+      });
+    }
+
+    // Inicializar Flatpickr con fecha por defecto = hoy - 2 días
+    const defaultDate = new Date(Date.now() - 2 * 24*60*60*1000);
+    flatpickr("#datePicker", {
+      dateFormat: "Y-m-d",
+      defaultDate,
+      maxDate: new Date(),
+      onChange: (sel, dateStr) => { if (dateStr) fetchData(dateStr); }
+    });
+
+    // Carga inicial
+    const initDate = defaultDate.toISOString().split('T')[0];
+    fetchData(initDate);
+  </script>
+</body>
+</html>
+```
