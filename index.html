@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Generación de Energía por tecnología</title>
+  <title>Generación por tecnología</title>
   <!-- Flatpickr para calendario -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <style>
@@ -223,10 +223,19 @@
         const ctx = document.getElementById(`chart-${idx}`).getContext('2d');
         new Chart(ctx, {
           type: 'bar',
-          data: { labels, datasets: [{ label: tech.attributes.title, data, backgroundColor: getColors(labels.length), hoverBackgroundColor: getColors(labels.length) }] },
+          data: {
+            labels,
+            datasets: [{
+              label: tech.attributes.title,
+              data,
+              backgroundColor: getColors(labels.length),
+              hoverBackgroundColor: getColors(labels.length)
+            }]
+          },
           options: {
             animation: { duration: 1000 },
             plugins: {
+              legend: { display: false },
               title: { display: true, text: tech.attributes.title, color: '#fff', font: { size: 18 } },
               tooltip: { callbacks: { label: ctx => `Valor: ${ctx.dataset.data[ctx.dataIndex].toFixed(1)} MWh — Porcentaje: ${percs[ctx.dataIndex]}` } },
               datalabels: { display: false }
